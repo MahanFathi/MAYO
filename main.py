@@ -1,8 +1,13 @@
 import torch
 from byol_pytorch.mayo_pytorch import MAYO
+from torch.utils.data import DataLoader
+import torchvision
 from torchvision import models
 
-resnet = models.resnet18(pretrained=False)
+from torchvision import transforms as T
+
+
+resnet = models.resnet18(pretrained=True)
 
 learner = MAYO(
     resnet,
@@ -12,22 +17,24 @@ learner = MAYO(
 
 opt = torch.optim.Adam(learner.parameters(), lr=3e-4)
 
-learner.calc_norm_values(torch.randn(200, 3, 96, 96))
+stl10 = torchvision.datasets.STL10(
+    ".",
+    download=True,
+    transform = T.Compose([T.ToTensor()]),
+)
+train_dataloader = DataLoader(stl10, batch_size=64, shuffle=True)
 
-def sample_unlabelled_images():
-    return torch.randn(20, 3, 96, 96)
+learner.calc_norm_values(stl10.data)
 
-for _ in range(100):
-    images = sample_unlabelled_images()
-    loss = learner(images)
-    _, hidden, repr = learner.online_encoder(images)
-    print(hidden.shape)
-    print(repr.shape)
-    print("=--------=")
-    opt.zero_grad()
-    loss.backward()
-    opt.step()
-    learner.update_moving_average() # update moving average of target encoder
+for _ in range(1000):
+    for images, _ in train_dataloader:
+        loss = learner(images)
+        _, hidden, repr = learner.online_encoder(images)
+        opt.zero_grad()
+        loss.backward()
+        print(loss)
+        opt.step()
+        # learner.update_moving_average() # update moving average of target encoder
 
 # save your improved network
 torch.save(resnet.state_dict(), './improved-net.pt')
