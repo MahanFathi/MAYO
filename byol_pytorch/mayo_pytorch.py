@@ -235,6 +235,7 @@ class MAYO(nn.Module):
                 std=torch.tensor([0.229, 0.224, 0.225])),
         )
 
+        self.crop_resize_augmentation = T.RandomResizedCrop((image_size, image_size))
 
         self.augment1 = default(augment_fn, DEFAULT_AUG)
         self.augment2 = default(augment_fn2, self.augment1)
@@ -284,6 +285,7 @@ class MAYO(nn.Module):
         if return_embedding:
             return self.online_encoder(x, return_projection = return_projection)[-1]
 
+        x = self.crop_resize_augmentation(x)
         x = self.norm_fn(x)
 
         with torch.no_grad():
