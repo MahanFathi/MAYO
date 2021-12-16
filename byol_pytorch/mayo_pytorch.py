@@ -286,7 +286,7 @@ class MAYO(nn.Module):
             return self.online_encoder(x, return_projection = return_projection)[-1]
 
         x = self.crop_resize_augmentation(x)
-        x_unnormalized = x
+        x_unnormalized = x.clone()
         x = self.norm_fn(x)
 
         with torch.no_grad():
@@ -297,11 +297,12 @@ class MAYO(nn.Module):
             target_repr.detach_()
 
         augmented_x = self.autoaugment(target_hidden.detach())
+        augmented_x_unnormalized = augmented_x.clone()
         augmented_x = self.norm_fn(augmented_x)
         online_proj, _, _ = self.online_encoder(augmented_x)
         online_pred = self.online_predictor(online_proj)
 
         loss = loss_fn(online_pred, target_proj.detach())
-        loss += self.eta * F.mse_loss(x_unnormalized, augmented_x)
+        loss += self.eta * F.mse_loss(x_unnormalized, augmented_x_unnormalized)
 
         return loss.mean()
