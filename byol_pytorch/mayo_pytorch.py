@@ -198,7 +198,8 @@ class MAYO(nn.Module):
         augment_fn = None,
         augment_fn2 = None,
         moving_average_decay = 0.99,
-        use_momentum = True
+        use_momentum = True,
+        eta = 1e-2,
     ):
         super().__init__()
         self.net = net
@@ -222,6 +223,7 @@ class MAYO(nn.Module):
                 std=torch.tensor([0.229, 0.224, 0.225])),
         )
 
+
         self.augment1 = default(augment_fn, DEFAULT_AUG)
         self.augment2 = default(augment_fn2, self.augment1)
         self.autoaugment = AutoAugment(image_size, 512)
@@ -231,6 +233,7 @@ class MAYO(nn.Module):
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
+        self.eta = eta
 
         self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
 
@@ -238,8 +241,15 @@ class MAYO(nn.Module):
         device = get_module_device(net)
         self.to(device)
 
+        self.calc_norm_values()
+
         # send a mock image tensor to instantiate singleton parameters
-        # self.forward(torch.randn(2, 3, image_size, image_size, device=device))
+        self.forward(torch.randn(2, 3, image_size, image_size, device=device))
+
+    def calc_norm_values(self, train_dataset):
+        norm_mean = torch.mean(train_dataset, dim=[-1, -2, 0])
+        norm_std = torch.std(train_dataset, dim=[-1, -2, 0])
+        self.norm_fn = T.Normalize(norm_mean, norm_std)
 
     @singleton('target_encoder')
     def _get_target_encoder(self):
@@ -256,9 +266,6 @@ class MAYO(nn.Module):
         assert self.target_encoder is not None, 'target encoder has not been created yet'
         update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
 
-    def generator(self, x):
-        return x
-
     def forward(
         self,
         x,
@@ -270,7 +277,8 @@ class MAYO(nn.Module):
         if return_embedding:
             return self.online_encoder(x, return_projection = return_projection)
 
-        # self.eval()
+        x = self.norm_fn(x)
+
         with torch.no_grad():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
             target_proj, target_repr = target_encoder(x)
@@ -278,13 +286,11 @@ class MAYO(nn.Module):
             target_repr.detach_()
 
         augmented_x = self.autoaugment(target_repr.detach())
-        print("kiiiiiiir")
-        print(x.shape)
-        print(augmented_x.shape)
+        augmented_x = self.norm_fn(augmented_x)
         online_proj, _ = self.online_encoder(augmented_x)
-
         online_pred = self.online_predictor(online_proj)
 
         loss = loss_fn(online_pred, target_proj.detach())
+        loss += self.eta * F.mse_loss(x, augmented_x)
 
         return loss.mean()
