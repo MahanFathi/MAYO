@@ -12,10 +12,10 @@ learner = MAYO(
 
 opt = torch.optim.Adam(learner.parameters(), lr=3e-4)
 
-learner.calc_norm_values(torch.randn(200, 3, 128, 128))
+learner.calc_norm_values(torch.randn(200, 3, 96, 96))
 
 def sample_unlabelled_images():
-    return torch.randn(20, 3, 128, 128)
+    return torch.randn(20, 3, 96, 96)
 
 for _ in range(100):
     images = sample_unlabelled_images()
