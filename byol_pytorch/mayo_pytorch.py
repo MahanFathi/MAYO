@@ -114,7 +114,7 @@ class AutoAugment(nn.Module):
         x = self.deconv_ops(x)
         x = F.interpolate(x, size=128, mode="bilinear")
         x += 1.
-        x *= 255 / 2
+        x *= 255. / 2.
         return x
 
 
@@ -133,32 +133,41 @@ class NetWrapper(nn.Module):
         self.projection_hidden_size = projection_hidden_size
 
         self.hidden = {}
+        self.repr = {}
         self.hook_registered = False
 
-    def _find_layer(self):
-        if type(self.layer) == str:
+    def _find_layer(self, layer):
+        if type(layer) == str:
             modules = dict([*self.net.named_modules()])
-            return modules.get(self.layer, None)
-        elif type(self.layer) == int:
+            return modules.get(layer, None)
+        elif type(layer) == int:
             children = [*self.net.children()]
-            return children[self.layer]
+            return children[layer]
         return None
 
-    def _hook(self, _, input, output):
+    def _hook_hidden(self, _, input, output):
         device = input[0].device
         self.hidden[device] = output
 
+    def _hook_repr(self, _, input, output):
+        device = input[0].device
+        self.repr[device] = output
+
     def _register_hook(self):
-        layer = self._find_layer()
+        layer = self._find_layer(self.layer)
         assert layer is not None, f'hidden layer ({self.layer}) not found'
-        handle = layer.register_forward_hook(self._hook)
+        handle = layer.register_forward_hook(self._hook_hidden)
+
+        layer = self._find_layer(self.layer + 1)
+        assert layer is not None, f'hidden layer ({self.layer}) not found'
+        handle = layer.register_forward_hook(self._hook_repr)
         self.hook_registered = True
 
     @singleton('projector')
-    def _get_projector(self, hidden):
-        dim = np.prod(hidden.shape[1:])
+    def _get_projector(self, repr):
+        dim = np.prod(repr.shape[1:])
         projector = MLP(dim, self.projection_size, self.projection_hidden_size)
-        return projector.to(hidden)
+        return projector.to(repr)
 
     def get_representation(self, x):
         if self.layer == -1:
@@ -168,22 +177,25 @@ class NetWrapper(nn.Module):
             self._register_hook()
 
         self.hidden.clear()
+        self.repr.clear()
         _ = self.net(x)
         hidden = self.hidden[x.device]
+        repr = self.repr[x.device]
         self.hidden.clear()
+        self.repr.clear()
 
         assert hidden is not None, f'hidden layer {self.layer} never emitted an output'
-        return hidden
+        return hidden, repr
 
     def forward(self, x, return_projection = True):
-        representation = self.get_representation(x)
+        hidden, representation = self.get_representation(x)
 
         if not return_projection:
-            return representation
+            return hidden, representation
 
         projector = self._get_projector(representation)
         projection = projector(representation)
-        return projection, representation
+        return projection, hidden, representation
 
 # main class
 
@@ -228,7 +240,7 @@ class MAYO(nn.Module):
         self.augment2 = default(augment_fn2, self.augment1)
         self.autoaugment = AutoAugment(image_size, 512)
 
-        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=-3)
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer)
 
         self.use_momentum = use_momentum
         self.target_encoder = None
@@ -240,11 +252,6 @@ class MAYO(nn.Module):
         # get device of network and make wrapper same device
         device = get_module_device(net)
         self.to(device)
-
-        self.calc_norm_values()
-
-        # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, 3, image_size, image_size, device=device))
 
     def calc_norm_values(self, train_dataset):
         norm_mean = torch.mean(train_dataset, dim=[-1, -2, 0])
@@ -275,19 +282,20 @@ class MAYO(nn.Module):
         assert not (self.training and x.shape[0] == 1), 'you must have greater than 1 sample when training, due to the batchnorm in the projection layer'
 
         if return_embedding:
-            return self.online_encoder(x, return_projection = return_projection)
+            return self.online_encoder(x, return_projection = return_projection)[-1]
 
         x = self.norm_fn(x)
 
         with torch.no_grad():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
-            target_proj, target_repr = target_encoder(x)
+            target_proj, target_hidden, target_repr = target_encoder(x)
             target_proj.detach_()
+            target_hidden.detach_()
             target_repr.detach_()
 
-        augmented_x = self.autoaugment(target_repr.detach())
+        augmented_x = self.autoaugment(target_hidden.detach())
         augmented_x = self.norm_fn(augmented_x)
-        online_proj, _ = self.online_encoder(augmented_x)
+        online_proj, _, _ = self.online_encoder(augmented_x)
         online_pred = self.online_predictor(online_proj)
 
         loss = loss_fn(online_pred, target_proj.detach())

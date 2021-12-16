@@ -7,10 +7,12 @@ resnet = models.resnet18(pretrained=False)
 learner = MAYO(
     resnet,
     image_size = 128,
-    hidden_layer = 'avgpool'
+    hidden_layer = -3
 )
 
 opt = torch.optim.Adam(learner.parameters(), lr=3e-4)
+
+learner.calc_norm_values(torch.randn(200, 3, 128, 128))
 
 def sample_unlabelled_images():
     return torch.randn(20, 3, 128, 128)
@@ -18,8 +20,10 @@ def sample_unlabelled_images():
 for _ in range(100):
     images = sample_unlabelled_images()
     loss = learner(images)
-    _, repr = learner.online_encoder(images)
+    _, hidden, repr = learner.online_encoder(images)
+    print(hidden.shape)
     print(repr.shape)
+    print("=--------=")
     opt.zero_grad()
     loss.backward()
     opt.step()
