@@ -199,7 +199,7 @@ def get_ssl_trainloader(args):
 
 def save_file(obj, type, filename, args):
     if type == "jsonl":
-        with (os.path.join(args.output_path, filename)).open("w") as f:
+        with open(os.path.join(args.output_path, filename), "w") as f:
             for d in obj:
                 f.write(json.dumps(d) + "\n")
     elif type == "torch":
