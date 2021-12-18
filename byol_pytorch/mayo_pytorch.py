@@ -94,26 +94,17 @@ class AutoAugment(nn.Module):
         self.in_channel = in_channel
 
         self.deconv_ops = nn.Sequential(
-            nn.ConvTranspose2d(self.in_channel, 256, 3, 2),
-            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(self.in_channel, 256, 3, 1),
+#             nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.ConvTranspose2d(256, 128, 3, 1),
-            nn.BatchNorm2d(128),
+#             nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.ConvTranspose2d(128, 64, 3, 2),
-            nn.BatchNorm2d(64),
+            nn.ConvTranspose2d(128, 64, 5, 2),
+#             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 64, 3, 1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, 3, 2),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 32, 3, 1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 16, 3, 1),
-            nn.BatchNorm2d(16),
+            nn.ConvTranspose2d(64, 16, 5, 2),
+#             nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.ConvTranspose2d(16, 3, 3, 2),
             nn.Tanh(),
@@ -294,17 +285,17 @@ class MAYO(nn.Module):
             return self.online_encoder(x, return_projection = return_projection)[-1]
 
         x = self.crop_resize_augmentation(x)
-        # x = self.norm_fn(x)
+#         x = self.norm_fn(x)
 
         with torch.no_grad():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
             target_proj, target_hidden, target_repr = target_encoder(x)
             target_proj.detach_()
-
+            target_hidden.detach_()
             target_repr.detach_()
 
         augmented_x = self.autoaugment(target_hidden.detach())
-        # augmented_x = self.norm_fn(augmented_x)
+#         augmented_x = self.norm_fn(augmented_x)
         online_proj, _, _ = self.online_encoder(augmented_x)
         online_pred = self.online_predictor(online_proj)
 
