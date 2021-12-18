@@ -100,7 +100,7 @@ def test_reg_acc(epoch, net, testloader, args):
 def train_regression(learner, args):
     print("Start Train Regression Model.")
     # Get Regression Model
-    net = RegressionNet(learner, args)
+    net = RegressionNet(learner, args).to(args.device)
     net_optim = get_reg_optim(net, args)
     net_criterion = nn.CrossEntropyLoss()
 
