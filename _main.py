@@ -235,7 +235,7 @@ def train_ssl(learner, learner_optim, ssl_trainloader, args):
 
             running_loss += loss.item()
 
-        if (args.model != "simsiam") and (not args.use_momentum):
+        if (args.model != "simsiam") and (args.use_momentum):
             learner.update_moving_average()
         epoch_end_time = time.time()
         ssl_metrics.append({
