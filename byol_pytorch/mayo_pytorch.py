@@ -112,7 +112,7 @@ class AutoAugment(nn.Module):
 
     def forward(self, x):
         x = self.deconv_ops(x)
-        x = F.interpolate(x, size=128, mode="bilinear")
+        x = F.interpolate(x, size=self.output_size, mode="bilinear")
         return x
 
 
