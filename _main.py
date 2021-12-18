@@ -299,18 +299,18 @@ if __name__ == "__main__":
     parser.add_argument("--save_every", type=int, default=10)
     args = parser.parse_args()
 
-    # Set device
-    if torch.cuda.is_available() and (args.device != "cpu"):
-        args.device = torch.device(args.device)
-    else:
-        args.device = torch.device("cpu")
-
     # Set output path
     args.output_path = os.path.join(args.path, args.run_id)
     os.makedirs(args.output_path, exist_ok=True)
 
     with open(os.path.join(args.output_path, "config.txt"), "w") as f:
         json.dump(args.__dict__, f, indent=2)
+
+        # Set device
+    if torch.cuda.is_available() and (args.device != "cpu"):
+        args.device = torch.device(args.device)
+    else:
+        args.device = torch.device("cpu")
 
     # Train and Evaluate the Model
     build_and_train(args)
