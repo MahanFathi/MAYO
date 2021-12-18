@@ -62,7 +62,7 @@ def get_reg_dataloaders(args):
             transform=transforms.Compose([transforms.ToTensor()]),
             split="train"
         )
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.ssl_batch_size,
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.reg_batch_size,
                                                   shuffle=True, num_workers=6)
 
         testset = torchvision.datasets.STL10(
@@ -71,11 +71,11 @@ def get_reg_dataloaders(args):
             transform=transforms.Compose([transforms.ToTensor()]),
             split="test"
         )
-        testloader = torch.utils.data.DataLoader(testset, batch_size=args.ssl_batch_size,
+        testloader = torch.utils.data.DataLoader(testset, batch_size=args.reg_batch_size,
                                                   shuffle=True, num_workers=6)
     else:
-        Exception(f"Regression dataset {args.dataset} not supported!")
-    return trainloader, testset
+        raise Exception(f"Regression dataset {args.dataset} not supported!")
+    return trainloader, testloader
 
 
 def test_reg_acc(epoch, net, testloader, args):
@@ -92,12 +92,13 @@ def test_reg_acc(epoch, net, testloader, args):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
     return {
-        "reg_test_epoch": epoch,
-        "reg_acc": (100 * correct / total)
+        "epoch": epoch,
+        "test_acc": (100 * correct / total)
     }
 
 
 def train_regression(learner, args):
+    print("Start Train Regression Model.")
     # Get Regression Model
     net = RegressionNet(learner, args)
     net_optim = get_reg_optim(net, args)
@@ -123,12 +124,16 @@ def train_regression(learner, args):
 
         if epoch % args.save_every == 0:
             reg_metrics.append(test_reg_acc(epoch+1, net, reg_testloader, args))
+            print(f"Rgression train metrics: {reg_metrics[-1]}")
             save_file(reg_metrics, "jsonl", "reg_metrics.jsonl", args)
             save_file(net, "torch", "reg_net.pth", args)
 
     reg_metrics.append(test_reg_acc(args.reg_epochs+1, net, reg_testloader, args))
     save_file(reg_metrics, "jsonl", "reg_metrics.jsonl", args)
     save_file(net, "torch", "reg_net.pth", args)
+    if len(reg_metrics) > 0:
+        print(f"Rgression train metrics: {reg_metrics[-1]}")
+    print("Finished Train Regression")
 
 
 def get_model(backbone, args):
@@ -193,7 +198,7 @@ def get_ssl_trainloader(args):
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.ssl_batch_size,
                                                   shuffle=True, num_workers=6)
     else:
-        Exception(f"SSL dataset {args.dataset} not supported!")
+        raise Exception(f"SSL dataset {args.dataset} not supported!")
     return trainloader
 
 
@@ -205,10 +210,11 @@ def save_file(obj, type, filename, args):
     elif type == "torch":
         torch.save(obj.state_dict(), os.path.join(args.output_path, filename))
     else:
-        Exception(f"Type {type} not supported!")
+        raise Exception(f"Type {type} not supported!")
 
 
 def train_ssl(learner, learner_optim, ssl_trainloader, args):
+    print("Start train SSL model.")
     # Set metric logger
     ssl_metrics = []
 
@@ -234,15 +240,19 @@ def train_ssl(learner, learner_optim, ssl_trainloader, args):
         epoch_end_time = time.time()
         ssl_metrics.append({
             "epoch": epoch,
-            "duration": ((epoch_start_time - epoch_end_time) / 60.),
+            "duration": ((epoch_end_time - epoch_start_time) / 60.),
             "average_loss" : (running_loss / len(ssl_trainloader))
         })
         if epoch % args.save_every == 0:
+            print(f"SSL train metrics: {ssl_metrics[-1]}")
             save_file(ssl_metrics, "jsonl", "ssl_metrics.jsonl", args)
             save_file(learner, "torch", "learner.pth", args)
 
-    save_file(ssl_metrics, "josnl", "ssl_metrics.jsonl", args)
+    save_file(ssl_metrics, "jsonl", "ssl_metrics.jsonl", args)
     save_file(learner, "torch", "learner.pth", args)
+    if len(ssl_metrics) > 0:
+        print(f"SSL train metrics: {ssl_metrics[-1]}")
+    print("Finished SSL train.")
     return learner
 
 
